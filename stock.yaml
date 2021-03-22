@@ -1,0 +1,72 @@
+esphome:
+  name: stockdisplay
+  platform: ESP8266
+  board: esp_wroom_02
+
+logger:
+api:
+ota:
+
+wifi:
+  use_address: 192.168.2.174
+  ssid: !secret wifi_id
+  password: !secret wifi_pw
+
+spi:
+  clk_pin: GPIO14
+  mosi_pin: GPIO13
+
+sensor:
+  - platform: homeassistant
+    id: gme
+    entity_id: sensor.gme_live_price
+    internal: true
+    on_value:
+      then:
+        - lambda: |-
+            if (id(gme).state > id(old)) id(trend) = 1;
+            if (id(gme).state < id(old)) id(trend) = -1;
+            id(old) = id(gme).state;
+            id(segments).update();
+
+text_sensor:
+  - platform: homeassistant
+    id: market
+    entity_id: sensor.gme_live_state
+    internal: true
+
+interval:
+  - interval: 2min
+    then:
+      - lambda: |-
+          if (id(gme).state == id(old)) {
+            id(trend) = 0;
+            id(segments).update();
+          }
+
+globals:
+  - id: old
+    type: float
+    initial_value: "0"
+  - id: trend
+    type: int
+    initial_value: "0"
+
+display:
+  - platform: max7219
+    id: segments
+    cs_pin: GPIO15
+    num_chips: 1
+    lambda: |-
+      it.printf(0, "%.02f", id(gme).state);
+      if (id(market).state == "REGULAR") {
+        it.set_intensity(2);
+        if (id(trend) > 0) it.print(7, "*");
+        if (id(trend) < 0) it.print(7, "_");
+        if (id(trend) == 0) it.print(7, "-");
+      } else {
+        it.set_intensity(0);
+        it.print(0, "        ");
+      }
+
+# id(market).state: "REGULAR", "PRE", "PREPRE", "POST", "POSTPOST"
