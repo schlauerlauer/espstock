@@ -8,7 +8,6 @@ api:
 ota:
 
 wifi:
-  use_address: 192.168.2.174
   ssid: !secret wifi_id
   password: !secret wifi_pw
 
