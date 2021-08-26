@@ -23,10 +23,16 @@ sensor:
     on_value:
       then:
         - lambda: |-
-            if (id(gme).state > id(old)) id(trend) = 1;
-            if (id(gme).state < id(old)) id(trend) = -1;
-            id(old) = id(gme).state;
+            id(graph)[0] = id(graph)[1];
+            id(graph)[1] = id(graph)[2];
+            id(graph)[2] = id(graph)[3];
+
+            if ((id(gme).state - id(old)) > id(threshold)) id(graph)[3] = '*';
+            else if ((id(old) - id(gme).state) > id(threshold)) id(graph)[3] = '_';
+            else id(graph)[3] = '-';
+
             id(segments).update();
+            id(old) = id(gme).state;
 
 text_sensor:
   - platform: homeassistant
@@ -34,22 +40,21 @@ text_sensor:
     entity_id: sensor.gme_live_state
     internal: true
 
-interval:
-  - interval: 2min
-    then:
-      - lambda: |-
-          if (id(gme).state == id(old)) {
-            id(trend) = 0;
-            id(segments).update();
-          }
+time:
+  - platform: sntp
+    id: sntp_time
+    timezone: Europe/Berlin
 
 globals:
   - id: old
     type: float
     initial_value: "0"
-  - id: trend
-    type: int
-    initial_value: "0"
+  - id: graph
+    type: char[5] # last char is array end symbol?
+    initial_value: "{'-', '-', '-', '-'}"
+  - id: threshold
+    type: double
+    initial_value: "0.15"
 
 display:
   - platform: max7219
@@ -57,15 +62,19 @@ display:
     cs_pin: GPIO15
     num_chips: 1
     lambda: |-
-      it.printf(0, "%.02f", id(gme).state);
       if (id(market).state == "REGULAR") {
-        it.set_intensity(2);
-        if (id(trend) > 0) it.print(7, "*");
-        if (id(trend) < 0) it.print(7, "_");
-        if (id(trend) == 0) it.print(7, "-");
-      } else {
-        it.set_intensity(0);
+        it.set_intensity(4);
+        it.print(4, id(graph));
+        it.printf(0, "%.01f", id(gme).state);
+      } else if (id(market).state == "POST" || id(market).state == "POSTPOST") {
         it.print(0, "        ");
+      } else {
+        if (id(sntp_time).now().is_valid()) {
+          it.set_intensity(1);
+          it.strftime(0,"    %H.%M", id(sntp_time).now());
+        } else {
+          it.print(0, "  ----  ");
+        }
       }
 
 # id(market).state: "REGULAR", "PRE", "PREPRE", "POST", "POSTPOST"
